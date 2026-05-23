@@ -21,6 +21,8 @@ publishers ──► [pub/sub backend] ──► [listener thread, 1 per process
 
 Each SSE response loop does a **blocking** `queue.pop`. The listener does a **non-blocking** `queue.push`. If a slow consumer can't keep up and its queue overflows, the queue is closed — the client disconnects, reconnects, and resyncs from your persistent store via `Last-Event-ID`.
 
+> **Heads-up on app servers.** SSE connections are long-lived. On thread-pool servers (Puma <8, Unicorn, Passenger) each connection pins a worker thread for its entire lifetime — N concurrent SSE clients require N+ workers. With **Puma 8+** the connection releases its worker via `mark_as_io_bound` (the [`Ration::Rails::SSE`](#rails-integration-rationrailssse) helper handles this for you). With **Falcon** the issue doesn't arise — each connection runs on a fiber. Beyond a handful of clients on a thread-pool server, an async server is the right choice. See [Server compatibility](#server-compatibility) for details.
+
 ## Scope
 
 The Ration core is **transport only**. It does not:
@@ -34,9 +36,11 @@ This is deliberate, and the gem is split into independent layers so each one sta
 ```
 Ration            ← core: event fan-out. Knows nothing about SSE.
 Ration::SSE       ← opt-in, pure: SSE wire-format framing. Knows nothing about Rails.
+Ration::Rails::SSE ← opt-in: Rails controller concern that wraps SSE headers,
+                     mark_as_io_bound, and the response_body Enumerator.
 ```
 
-`Ration::SSE` is loaded with `require 'ration/sse'` only when you want it. The core never references it, so you can use Ration to drive WebSockets, JSONL streams, or anything else just as easily.
+Each layer only depends on the layers above it. Lower layers stay reusable: the core can drive WebSockets or JSONL streams just as easily, and `Ration::SSE` works without Rails.
 
 The intended usage is "table of truth + Ration broadcasts ids" — see [Recommended pattern](#recommended-pattern).
 
@@ -75,24 +79,26 @@ Ration.publish id: event.id, type: 'message', user_id: 42
 ```
 
 ```ruby
-# in an SSE endpoint — `y` is the Rack streaming yielder
+# in an SSE controller
 require 'ration/sse'
+require 'ration/rails'
 
-# Under Puma 8, release this worker thread back to the pool while we wait on
-# events. No-op on other servers / older Puma. See:
-# https://github.com/puma/puma/pull/3816
-request.env['puma.mark_as_io_bound']&.call
+class EventsController < ApplicationController
+  include Ration::Rails::SSE
 
-self.response_body = Enumerator.new {|y|
-  Ration.subscribe(
-    max:    100,
-    filter: ->(e) { e[:user_id] == current_user.id }
-  ) do |subscription|
-    Ration::SSE.stream subscription, y do |event|
-      Ration::SSE.event(data: event, id: event[:id])
-    end
+  def stream
+    sse_stream {|y|
+      Ration.subscribe(
+        max:    100,
+        filter: ->(e) { e[:user_id] == current_user.id }
+      ) do |subscription|
+        Ration::SSE.stream subscription, y do |event|
+          Ration::SSE.event(data: event, id: event[:id])
+        end
+      end
+    }
   end
-}
+end
 ```
 
 ## API
@@ -216,23 +222,52 @@ last_id = Ration::SSE.stream(subscription, output, since: last_id) {|event|
 
 The method returns when the subscription is closed.
 
+## Rails integration (`Ration::Rails::SSE`)
+
+Opt-in controller concern that bundles the boilerplate every Rails SSE endpoint shares. Loaded with `require 'ration/rails'`.
+
+### `sse_stream { |y| ... }`
+
+Sets the SSE response headers, releases the worker thread to Puma 8's I/O-bound pool if available, and assigns `response_body` to an `Enumerator` whose block produces the stream chunks.
+
+```ruby
+require 'ration/rails'
+
+class EventsController < ApplicationController
+  include Ration::Rails::SSE
+
+  def stream
+    sse_stream do |y|
+      # write SSE chunks to y
+    end
+  end
+end
+```
+
+Equivalent to writing:
+
+```ruby
+response.headers['Content-Type']  = 'text/event-stream'
+response.headers['Cache-Control'] = 'no-cache'
+request.env['puma.mark_as_io_bound']&.call
+self.response_body = Enumerator.new {|y| ... }
+```
+
+The `&.call` on `puma.mark_as_io_bound` makes the worker-release behavior (see [puma#3816](https://github.com/puma/puma/pull/3816)) a safe no-op on Puma <8 or other app servers — the helper works everywhere; only Puma 8+ actually releases the thread.
+
 ## Recommended pattern
 
 Ration is transport; you own the state. Combine them for resilient SSE:
 
 ```ruby
 require 'ration/sse'
+require 'ration/rails'
 
 class EventsController < ApplicationController
+  include Ration::Rails::SSE
+
   def stream
-    response.headers['Content-Type']  = 'text/event-stream'
-    response.headers['Cache-Control'] = 'no-cache'
-
-    # Under Puma 8, release this worker thread back to the pool while we wait
-    # on events. No-op on other servers / older Puma.
-    request.env['puma.mark_as_io_bound']&.call
-
-    self.response_body = Enumerator.new {|y|
+    sse_stream {|y|
       last_id = request.headers['Last-Event-ID'].to_i
 
       Ration.subscribe(
@@ -268,7 +303,7 @@ The ordering matters:
 
 Reading the backlog before subscribing would drop any events arriving in between.
 
-> The example uses Rack streaming (`self.response_body = Enumerator.new { ... }`). `ActionController::Live` is intentionally out of scope — it has known rough edges around exceptions and thread cleanup. The `request.env['puma.mark_as_io_bound']&.call` line opts the request into Puma 8's I/O-bound thread pool (see [puma#3816](https://github.com/puma/puma/pull/3816)) so a long-lived SSE connection doesn't pin a worker thread. The `&.call` makes it a safe no-op on older Puma or other servers.
+> The example uses Rack streaming via the [`Ration::Rails::SSE`](#rails-integration-rationrailssse) helper, which handles headers, `mark_as_io_bound`, and the `response_body` Enumerator. `ActionController::Live` is intentionally out of scope — it has known rough edges around exceptions and thread cleanup.
 
 ## Backends
 
@@ -299,7 +334,7 @@ Ration::Backends::Postgres.new(
 ```
 
 - The listener holds one dedicated connection. `start` connects and issues `LISTEN` **synchronously**; if the first connection fails, `start` raises. Reconnection after that is automatic with exponential backoff (1s → 30s cap).
-- `poll_interval:` controls how often the listener wakes to check for shutdown. The default 1.0s is fine; lower values speed up `stop()` at the cost of more wakeups.
+- `poll_interval:` controls how often the listener wakes to check for shutdown. **Does not affect delivery latency** — `LISTEN/NOTIFY` is push-driven, so events arrive on the listener thread the moment they're published. The poll only governs how quickly `stop()` is observed; the default 1.0s is fine.
 - `publish_with:` lets you publish through your existing connection pool instead of opening a fresh PG connection per `publish`. **Strongly recommended in production:**
 
   ```ruby
@@ -325,7 +360,7 @@ Ration::Backends::Redis.new(
 )
 ```
 
-Same shape as the Postgres backend, using `redis-client`. The 6 KB cap is enforced for cross-backend consistency, not because Redis requires it.
+Same shape as the Postgres backend, using `redis-client`. The 6 KB cap is enforced for cross-backend consistency, not because Redis requires it. `poll_interval:` has the same meaning as in the Postgres backend — shutdown-wake only, not delivery latency.
 
 ## Per-process semantics
 
@@ -336,7 +371,7 @@ The listener thread is **per process**. In a typical Puma deployment, that means
 Ration itself is server-agnostic, but SSE connections are long-lived and how they consume server resources depends on the app server:
 
 - **Async / fiber-based servers (Falcon, etc.)** — handle this naturally. Each SSE connection runs on a fiber, doesn't pin an OS thread, and you can hold many thousands of connections per process. No special configuration needed.
-- **Puma 8+** — use `request.env['puma.mark_as_io_bound']&.call` (see [puma#3816](https://github.com/puma/puma/pull/3816)) to release the worker thread back to the pool while the connection blocks on event delivery. Shown in the [Quick start](#quick-start) and [Recommended pattern](#recommended-pattern). The `&.call` makes it a safe no-op on other servers.
+- **Puma 8+** — the [`Ration::Rails::SSE`](#rails-integration-rationrailssse) helper invokes `request.env['puma.mark_as_io_bound']&.call` for you (see [puma#3816](https://github.com/puma/puma/pull/3816)), releasing the worker thread back to the pool while the connection blocks on event delivery.
 - **Puma <8, Unicorn, Passenger, and other thread/process-pool servers without I/O-bound support** — each SSE connection occupies a worker thread or process for its entire lifetime. Size your pool with this in mind: N concurrent SSE clients require N+ workers plus headroom for regular requests. Beyond a handful of concurrent SSE clients, an async server is a much better fit.
 
 ## Development

@@ -87,12 +87,12 @@ class EventsController < ApplicationController
   include Ration::Rails::SSE
 
   def stream
-    sse_stream {|y|
+    sse_stream {|y, last_event_id|
       Ration.subscribe(
         max:    100,
         filter: ->(e) { e[:user_id] == current_user.id }
       ) do |subscription|
-        Ration::SSE.stream subscription, y do |event|
+        Ration::SSE.stream subscription, y, since: last_event_id&.to_i do |event|
           Ration::SSE.event(data: event, id: event[:id])
         end
       end
@@ -226,9 +226,14 @@ The method returns when the subscription is closed.
 
 Opt-in controller concern that bundles the boilerplate every Rails SSE endpoint shares. Loaded with `require 'ration/rails'`.
 
-### `sse_stream { |y| ... }`
+### `sse_stream { |y, last_event_id| ... }`
 
-Sets the SSE response headers, releases the worker thread to Puma 8's I/O-bound pool if available, and assigns `response_body` to an `Enumerator` whose block produces the stream chunks.
+Sets the SSE response headers, releases the worker thread to Puma 8's I/O-bound pool if available, reads the `Last-Event-ID` request header, and assigns `response_body` to an `Enumerator` whose block produces the stream chunks.
+
+The block receives two arguments:
+
+- `y` — the Rack streaming yielder.
+- `last_event_id` — the `Last-Event-ID` request header value as a `String`, or `nil` if absent. Pass it through to your backlog query and to [`Ration::SSE.stream`](#rationssestreamsubscription-output-heartbeat-15-since-nil-id_from-e--eid--event-)'s `since:` parameter, converting to your id type as needed (e.g. `.to_i` for integer ids).
 
 ```ruby
 require 'ration/rails'
@@ -237,8 +242,8 @@ class EventsController < ApplicationController
   include Ration::Rails::SSE
 
   def stream
-    sse_stream do |y|
-      # write SSE chunks to y
+    sse_stream do |y, last_event_id|
+      # use last_event_id to resume the stream
     end
   end
 end
@@ -250,10 +255,13 @@ Equivalent to writing:
 response.headers['Content-Type']  = 'text/event-stream'
 response.headers['Cache-Control'] = 'no-cache'
 request.env['puma.mark_as_io_bound']&.call
-self.response_body = Enumerator.new {|y| ... }
+last_event_id = request.headers['Last-Event-ID']
+self.response_body = Enumerator.new {|y| ... yield y, last_event_id ... }
 ```
 
 The `&.call` on `puma.mark_as_io_bound` makes the worker-release behavior (see [puma#3816](https://github.com/puma/puma/pull/3816)) a safe no-op on Puma <8 or other app servers — the helper works everywhere; only Puma 8+ actually releases the thread.
+
+Ruby block arity is lenient, so callers that don't need the second argument can use `sse_stream do |y| ... end` and `last_event_id` is silently dropped.
 
 ## Recommended pattern
 
@@ -267,8 +275,8 @@ class EventsController < ApplicationController
   include Ration::Rails::SSE
 
   def stream
-    sse_stream {|y|
-      last_id = request.headers['Last-Event-ID'].to_i
+    sse_stream {|y, last_event_id|
+      last_id = last_event_id.to_i
 
       Ration.subscribe(
         max:    100,

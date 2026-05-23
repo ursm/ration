@@ -51,7 +51,6 @@ class RailsSSETest < Ration::Test
     controller = FakeController.new
 
     controller.sse_stream {|y| }
-    # nothing to assert — just verifies it doesn't raise
   end
 
   def test_assigns_response_body_as_enumerator_that_invokes_block

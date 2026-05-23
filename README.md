@@ -40,7 +40,7 @@ Ration::Rails::SSE ← opt-in: Rails controller concern that wraps SSE headers,
                      mark_as_io_bound, and the response_body Enumerator.
 ```
 
-Each layer only depends on the layers above it. Lower layers stay reusable: the core can drive WebSockets or JSONL streams just as easily, and `Ration::SSE` works without Rails.
+`Ration::Rails::SSE` builds on `Ration::SSE`, which builds on `Ration`. Dependencies only flow downward, so lower layers stay reusable: the core can drive WebSockets or JSONL streams just as easily, and `Ration::SSE` works without Rails.
 
 The intended usage is "table of truth + Ration broadcasts ids" — see [Recommended pattern](#recommended-pattern).
 

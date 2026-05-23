@@ -1,0 +1,7 @@
+module Ration
+  class Error < StandardError; end
+
+  class PayloadTooLarge < Error; end
+
+  class NotConfigured < Error; end
+end

@@ -1,0 +1,42 @@
+module Ration
+  module Backends
+    class Postgres < Base
+      DEFAULT_CHANNEL: String
+      INITIAL_BACKOFF_SECONDS: Integer
+      MAX_BACKOFF_SECONDS: Integer
+      DEFAULT_POLL_INTERVAL: Float
+
+      type publish_with = ^(String, String) -> void
+
+      @url: String
+      @channel: String
+      @max_payload_bytes: Integer
+      @poll_interval: Numeric
+      @publish_with: publish_with
+      @logger: Logger
+      @thread: Thread?
+      @stop: bool
+
+      def initialize: (
+        url: String,
+        ?channel: String,
+        ?max_payload_bytes: Integer,
+        ?poll_interval: Numeric,
+        ?publish_with: publish_with?,
+        ?logger: Logger?
+      ) -> void
+
+      def publish: (Ration::event) -> void
+      def start: () -> void
+      def stop: () -> void
+
+      private
+
+      def publish_direct: (String, String) -> void
+      def connect_and_listen: () -> untyped
+      def run_loop: (untyped) -> void
+      def reconnect_with_backoff: () -> untyped
+      def listen_loop: (untyped) -> void
+    end
+  end
+end

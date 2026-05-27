@@ -23,7 +23,7 @@ module Ration
         @channel           = channel
         @max_payload_bytes = max_payload_bytes
         @poll_interval     = poll_interval
-        @publish_with      = publish_with
+        @publish_with      = publish_with || method(:publish_direct)
         @logger            = logger || Logger.new($stderr)
         @thread            = nil
         @stop              = false
@@ -33,16 +33,7 @@ module Ration
         payload = event.to_json
         check_payload_size!(payload, @max_payload_bytes)
 
-        if @publish_with
-          @publish_with.call(@channel, payload)
-        else
-          conn = PG.connect(@url)
-          begin
-            conn.exec_params('SELECT pg_notify($1, $2)', [@channel, payload])
-          ensure
-            conn.close
-          end
-        end
+        @publish_with.call(@channel, payload)
       end
 
       def start
@@ -60,6 +51,15 @@ module Ration
       end
 
       private
+
+      def publish_direct(channel, payload)
+        conn = PG.connect(@url)
+        begin
+          conn.exec_params('SELECT pg_notify($1, $2)', [channel, payload])
+        ensure
+          conn.close
+        end
+      end
 
       def connect_and_listen
         conn = PG.connect(@url)

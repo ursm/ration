@@ -1,0 +1,26 @@
+module Ration
+  class Subscription
+    OVERFLOW_POLICIES: Array[Symbol]
+    DEFAULT_FILTER: Ration::filter
+
+    attr_reader id: String
+
+    @queue: Thread::SizedQueue
+    @filter: Ration::filter
+    @on_overflow: Symbol
+    @logger: Logger
+
+    def initialize: (max: Integer, ?filter: Ration::filter?, ?on_overflow: Symbol, logger: Logger) -> void
+    def pop: (?timeout: _ToF?) -> Ration::event?
+    def each_event: (?timeout: _ToF?) -> Enumerator[Ration::event?, self]
+                  | (?timeout: _ToF?) { (Ration::event?) -> void } -> self
+    def closed?: () -> bool
+    def close: () -> void
+    def deliver: (Ration::event) -> void
+
+    private
+
+    def passes_filter?: (Ration::event) -> boolish
+    def handle_overflow: (Ration::event) -> void
+  end
+end

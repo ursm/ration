@@ -1,0 +1,8 @@
+module Ration
+  class Configuration
+    attr_accessor backend: Backends::Base?
+    attr_accessor logger: Logger
+
+    def initialize: () -> void
+  end
+end

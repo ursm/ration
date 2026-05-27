@@ -1,0 +1,19 @@
+module PG
+  class Error < StandardError
+  end
+
+  def self.connect: (String) -> untyped
+end
+
+module RedisClient
+  class Error < StandardError
+  end
+
+  def self.config: (**untyped) -> untyped
+end
+
+module Concurrent
+  class Map[unchecked out K, unchecked out V]
+    def clear: () -> self
+  end
+end

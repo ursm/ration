@@ -13,7 +13,7 @@ Gem::Specification.new do |spec|
 
   spec.required_ruby_version = '>= 3.3'
 
-  spec.files         = Dir['lib/**/*.rb']
+  spec.files         = Dir['lib/**/*.rb'] + Dir['sig/**/*.rbs']
   spec.require_paths = ['lib']
 
   spec.add_dependency 'concurrent-ruby', '~> 1.2'

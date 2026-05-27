@@ -1,0 +1,22 @@
+module Ration
+  class Hub
+    @backend: Backends::Base
+    @logger: Logger
+    @subscriptions: Concurrent::Map[String, Subscription]
+    @started: bool
+    @start_mutex: Thread::Mutex
+
+    def initialize: (backend: Backends::Base, logger: Logger) -> void
+    def publish: (Ration::event) -> void
+    def subscribe: (max: Integer, ?filter: Ration::filter?, ?on_overflow: Symbol) -> Subscription
+                 | [T] (max: Integer, ?filter: Ration::filter?, ?on_overflow: Symbol) { (Subscription) -> T } -> T
+    def unsubscribe: (Subscription) -> void
+    def stop: () -> void
+    def subscription_count: () -> Integer
+
+    private
+
+    def ensure_started: () -> void
+    def deliver: (Ration::event) -> void
+  end
+end

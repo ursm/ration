@@ -1,0 +1,22 @@
+module Ration
+  module Rails
+    interface _Response
+      def headers: () -> Hash[String, String]
+    end
+
+    interface _Request
+      def headers: () -> Hash[String, untyped]
+      def env: () -> Hash[String, untyped]
+    end
+
+    interface _Controller
+      def response: () -> _Response
+      def request: () -> _Request
+      def response_body=: (untyped) -> void
+    end
+
+    module SSE : _Controller
+      def sse_stream: () { (Enumerator::Yielder, String?) -> void } -> void
+    end
+  end
+end

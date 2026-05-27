@@ -1,0 +1,19 @@
+module Ration
+  module Backends
+    class Base
+      DEFAULT_MAX_PAYLOAD_BYTES: Integer
+
+      @on_event: ^(Ration::event) -> void | nil
+
+      def publish: (Ration::event) -> void
+      def on_event: () { (Ration::event) -> void } -> (^(Ration::event) -> void)
+      def start: () -> void
+      def stop: () -> void
+
+      private
+
+      def emit: (Ration::event) -> void
+      def check_payload_size!: (String, Integer) -> void
+    end
+  end
+end

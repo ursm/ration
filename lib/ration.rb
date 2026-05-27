@@ -11,12 +11,11 @@ module Ration
     def configure
       yield config
 
-      if config.backend.nil?
+      backend = config.backend or
         raise NotConfigured, 'No backend configured. Set config.backend to a Ration::Backends::* instance.'
-      end
 
       @hub&.stop
-      @hub = Hub.new(backend: config.backend, logger: config.logger)
+      @hub = Hub.new(backend: backend, logger: config.logger)
     end
 
     def config
@@ -27,8 +26,8 @@ module Ration
       hub.publish(event)
     end
 
-    def subscribe(**kwargs, &block)
-      hub.subscribe(**kwargs, &block)
+    def subscribe(...)
+      hub.subscribe(...) # steep:ignore UnresolvedOverloading
     end
 
     def unsubscribe(sub)
@@ -44,9 +43,7 @@ module Ration
     private
 
     def hub
-      raise NotConfigured, 'Ration is not configured. Call Ration.configure first.' unless @hub
-
-      @hub
+      @hub or raise NotConfigured, 'Ration is not configured. Call Ration.configure first.'
     end
   end
 end

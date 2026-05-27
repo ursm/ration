@@ -1,0 +1,27 @@
+module Ration
+  module SSE
+    interface _Output
+      def <<: (String) -> void
+    end
+
+    type id_from = ^(Ration::event) -> untyped
+
+    DEFAULT_ID_FROM: id_from
+
+    def self.event: (data: untyped, ?event: String?, ?id: untyped, ?retry_ms: Integer?) -> String
+    def self.comment: (?String) -> String
+    def self.ping: () -> String
+    def self.stream: (
+      Subscription,
+      _Output,
+      ?heartbeat: _ToF?,
+      ?since: untyped,
+      ?id_from: id_from
+    ) { (Ration::event) -> String? } -> untyped
+
+    private
+
+    def self.ensure_field_value_safe!: (String, String) -> void
+    def self.ensure_no_newline!: (String, String) -> void
+  end
+end

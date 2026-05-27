@@ -9,7 +9,7 @@ module Ration
         @max_payload_bytes = max_payload_bytes
         @sync              = sync
         @logger            = logger || Logger.new($stderr)
-        @queue             = nil
+        @queue             = Queue.new
         @thread            = nil
       end
 
@@ -27,7 +27,6 @@ module Ration
         return if @sync
         return if @thread
 
-        @queue  = Queue.new
         @thread = Thread.new {
           while (event = @queue.pop)
             begin
@@ -42,9 +41,9 @@ module Ration
       def stop
         return if @sync
 
-        @queue&.close
+        @queue.close
         @thread&.join
-        @queue  = nil
+        @queue  = Queue.new
         @thread = nil
       end
     end

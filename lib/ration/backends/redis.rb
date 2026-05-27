@@ -23,9 +23,9 @@ module Ration
         @channel           = channel
         @max_payload_bytes = max_payload_bytes
         @poll_interval     = poll_interval
-        @publish_with      = publish_with
-        @logger            = logger || Logger.new($stderr)
         @config            = RedisClient.config(url: url)
+        @publish_with      = publish_with || method(:publish_direct)
+        @logger            = logger || Logger.new($stderr)
         @thread            = nil
         @stop              = false
       end
@@ -34,16 +34,7 @@ module Ration
         payload = event.to_json
         check_payload_size!(payload, @max_payload_bytes)
 
-        if @publish_with
-          @publish_with.call(@channel, payload)
-        else
-          client = @config.new_client
-          begin
-            client.call('PUBLISH', @channel, payload)
-          ensure
-            client.close
-          end
-        end
+        @publish_with.call(@channel, payload)
       end
 
       def start
@@ -61,6 +52,15 @@ module Ration
       end
 
       private
+
+      def publish_direct(channel, payload)
+        client = @config.new_client
+        begin
+          client.call('PUBLISH', channel, payload)
+        ensure
+          client.close
+        end
+      end
 
       def subscribe_client
         client = @config.new_client

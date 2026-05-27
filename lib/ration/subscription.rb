@@ -3,6 +3,7 @@ require 'securerandom'
 module Ration
   class Subscription
     OVERFLOW_POLICIES = %i[close drop_oldest].freeze
+    DEFAULT_FILTER    = ->(_event) { true }
 
     attr_reader :id
 
@@ -13,7 +14,7 @@ module Ration
 
       @id          = SecureRandom.uuid
       @queue       = SizedQueue.new(max)
-      @filter      = filter
+      @filter      = filter || DEFAULT_FILTER
       @on_overflow = on_overflow
       @logger      = logger
     end
@@ -59,8 +60,6 @@ module Ration
     private
 
     def passes_filter?(event)
-      return true if @filter.nil?
-
       @filter.call(event)
     rescue => e
       @logger.error("Ration filter raised, closing subscription #{@id}: #{e.class}: #{e.message}")

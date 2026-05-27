@@ -1,0 +1,19 @@
+module Ration
+  type event = Hash[Symbol, untyped]
+  type filter = ^(event) -> boolish
+
+  self.@config: Configuration?
+  self.@hub: Hub?
+
+  def self.configure: () { (Configuration) -> void } -> void
+  def self.config: () -> Configuration
+  def self.publish: (event) -> void
+  def self.subscribe: (max: Integer, ?filter: filter?, ?on_overflow: Symbol) -> Subscription
+                    | [T] (max: Integer, ?filter: filter?, ?on_overflow: Symbol) { (Subscription) -> T } -> T
+  def self.unsubscribe: (Subscription) -> void
+  def self.reset!: () -> void
+
+  private
+
+  def self.hub: () -> Hub
+end

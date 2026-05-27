@@ -1,0 +1,16 @@
+module Ration
+  module Backends
+    class Memory < Base
+      @max_payload_bytes: Integer
+      @sync: bool
+      @logger: Logger
+      @queue: Thread::Queue
+      @thread: Thread?
+
+      def initialize: (?max_payload_bytes: Integer, ?sync: bool, ?logger: Logger?) -> void
+      def publish: (Ration::event) -> void
+      def start: () -> void
+      def stop: () -> void
+    end
+  end
+end
